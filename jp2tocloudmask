@@ -10,6 +10,7 @@ t0 = time.time()
 st = datetime.datetime.fromtimestamp(t0).strftime('%Y-%m-%d %H:%M:%S')
 print(st)
 
+#points to directory containing jp2 band files
 directory_with_jp2s = r''
 os.chdir(directory_with_jp2s)
 
