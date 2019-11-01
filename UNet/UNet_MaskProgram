@@ -44,7 +44,7 @@ st = datetime.datetime.fromtimestamp(t0).strftime('%Y-%m-%d %H:%M:%S')
 print(st)
 print("Starting, creating 4 band stack...")
 t0 = time.time()
-directory_with_jp2s = r'U:\Jackie_Examples\T31NCJ_S2A_tf20160419'
+directory_with_jp2s = r'' #<---point to directory containing jp2s for 1 image
 os.chdir(directory_with_jp2s)
 try:
     os.mkdir('Result')
