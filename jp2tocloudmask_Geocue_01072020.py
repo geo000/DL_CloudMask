@@ -71,12 +71,7 @@ for x, i in image_dict.items():
     dst_band = dst_ds.GetRasterBand(1)
     dst_band.SetNoDataValue(0)
     dst_band.WriteArray(reshaped_ypredclass)
-
-    dst_ds = driver.Create(str(i[0][0:21])+'_pred.tif',
-                           5490,
-                           5490,
-                           1,
-                           gdal.GDT_Byte)
+    dst_ds = None
 
     print('sieving and buffering...')
     #Change the following gdal script locations
