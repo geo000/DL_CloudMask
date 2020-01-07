@@ -10,6 +10,7 @@ print(st)
 
 directory_with_jp2s = r''
 path_to_loadlist = r''
+path_to_model = r''
 os.chdir(directory_with_jp2s)
 
 image_list = glob.glob('*.jp2')
@@ -40,7 +41,7 @@ for x, i in image_dict.items():
         df[band_number] = write_band
 
     print('loading model...')
-    model = load_model(r'') #path to .h5 model
+    model = load_model(path_to_model) #path to .h5 model
 
     t3 = time.time()
     print('predicting...')
