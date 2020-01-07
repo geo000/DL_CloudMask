@@ -60,12 +60,7 @@ dst_ds.SetProjection(srs.ExportToWkt())
 dst_band = dst_ds.GetRasterBand(1)
 dst_band.SetNoDataValue(0)
 dst_band.WriteArray(reshaped_ypredclass)
-
-dst_ds = driver.Create('_pred.tif',
-                       5490,
-                       5490,
-                       1,
-                       gdal.GDT_Byte)
+dst_ds = None
 
 print('sieving and buffering...')
 #Change paths to gdal script locations
