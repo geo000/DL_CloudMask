@@ -9,6 +9,7 @@ st = datetime.datetime.fromtimestamp(t0).strftime('%Y-%m-%d %H:%M:%S')
 print(st)
 
 directory_with_jp2s = r'' #path to jp2s
+path_to_model = r'' #path to .h5 model file
 os.chdir(directory_with_jp2s)
 
 print('Starting. Resampling and converting jp2s...')
@@ -29,7 +30,7 @@ for file in fileList:
     df[band_number] = write_band
 
 print('loading model...')
-model = load_model(r'') #path to .h5 model file
+model = load_model(path_to_model)
 
 t3 = time.time()
 print('predicting...')
