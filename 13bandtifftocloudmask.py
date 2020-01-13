@@ -24,8 +24,6 @@ for band in bands:
     write_band = rasterArray.flatten()
     df[band] = write_band
 
-#split cell here ^
-#t0 = time.time()
 saved_model = 'BETA_2'
 print('loading model...')
 model = load_model(r'U:\\Training_Data\\Models\\Model_'+saved_model+'.h5')
