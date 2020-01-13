@@ -24,9 +24,8 @@ for band in bands:
     write_band = rasterArray.flatten()
     df[band] = write_band
 
-saved_model = 'BETA_2'
 print('loading model...')
-model = load_model(r'U:\\Training_Data\\Models\\Model_'+saved_model+'.h5')
+model = load_model(r'') #path to model
 
 t3 = time.time()
 print('predicting...')
@@ -68,7 +67,7 @@ prox_command = ["python", gm, '-of','GTiff','-distunits','PIXEL','-maxdist','8',
 subprocess.call(prox_command,shell=True)
 
 gm = os.path.join('C:\\','Users','jbrown','AppData','Local','conda','conda','envs','cpu','Scripts','gdal_calc.py')
-merge_command = ["python", gm,"--outfile", "Final_Cloud_Mask_"+saved_model+'.tif','-A',"_sieved.tif",'-B','_prox.tif','--calc','A+B']
+merge_command = ["python", gm,"--outfile", "Final_Cloud_Mask.tif','-A',"_sieved.tif",'-B','_prox.tif','--calc','A+B']
 subprocess.call(merge_command,shell=True)
 
 t1 = time.time()
