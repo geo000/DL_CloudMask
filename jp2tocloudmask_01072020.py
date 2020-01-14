@@ -75,7 +75,7 @@ prox_command = ["python", gm, '-of','GTiff','-distunits','PIXEL','-maxdist','8',
 subprocess.call(prox_command,shell=True)
 
 gm = os.path.join('C:\\','Users','jbrown','AppData','Local','conda','conda','envs','cpu','Scripts','gdal_calc.py')
-merge_command = ["python", gm,"--outfile", "Final_Cloud_Mask_"+saved_model+'.tif','-A',"_sieved.tif",'-B','_prox.tif','--calc','A+B']
+merge_command = ["python", gm,"--outfile", 'Final_Cloud_Mask_.tif','-A',"_sieved.tif",'-B','_prox.tif','--calc','A+B']
 subprocess.call(merge_command,shell=True)
 
 t1 = time.time()
