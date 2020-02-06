@@ -52,7 +52,8 @@ dst_ds = driver.Create('_pred.tif',
                        5490,
                        5490,
                        1,
-                       gdal.GDT_Byte)
+                       gdal.GDT_Byte,
+                       options=["COMPRESS=LZW"])
 
 srs = osr.SpatialReference()
 srs.ImportFromEPSG(int(srs_prj[-8:-3]))
@@ -71,11 +72,11 @@ sieve_command = ["python", gm,'-st','8','-4','-nomask','-of','GTiff','_pred.tif'
 subprocess.call(sieve_command,shell=True)
 
 gm = os.path.join('C:\\','Users','jbrown','AppData','Local','conda','conda','envs','cpu','Scripts','gdal_proximity.py')
-prox_command = ["python", gm, '-of','GTiff','-distunits','PIXEL','-maxdist','8','-ot','Byte','-fixed-buf-val','1.0','_sieved.tif','_prox.tif']
+prox_command = ["python", gm, '-of','GTiff','-distunits','PIXEL','-maxdist','8','-ot','Byte','-fixed-buf-val','-co','COMPRESS=LZW','1.0','_sieved.tif','_prox.tif']
 subprocess.call(prox_command,shell=True)
 
 gm = os.path.join('C:\\','Users','jbrown','AppData','Local','conda','conda','envs','cpu','Scripts','gdal_calc.py')
-merge_command = ["python", gm,"--outfile", 'Final_Cloud_Mask.tif','-A',"_sieved.tif",'-B','_prox.tif','--calc','A+B']
+merge_command = ["python", gm,"--outfile", 'Final_Cloud_Mask.tif','-co','COMPRESS=LZW','-A',"_sieved.tif",'-B','_prox.tif','--calc','A+B']
 subprocess.call(merge_command,shell=True)
 
 t1 = time.time()
