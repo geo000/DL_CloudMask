@@ -1,4 +1,4 @@
-#single image shadow classification
+#single image shadow classification w/ zonal statistics for cloud height
 import os, random, glob, sys, subprocess, time, cv2, datetime, shutil, contextlib, datetime, math, csv
 import numpy as np
 import pandas as pd
@@ -15,15 +15,14 @@ t0 = time.time()
 st = datetime.datetime.fromtimestamp(t0).strftime('%Y-%m-%d %H:%M:%S')
 print(st)
 
-path_to_jp2s = r'D:\NewCloudTrials\Test\T31SDA_20201230'
+path_to_jp2s = r'D:\NewCloudTrials\Test\T49SDR_20200907'
 gdal_path = r'C:\Users\jbrow\anaconda3\envs\test\Scripts'
 os.chdir(path_to_jp2s)
 file_name = path_to_jp2s[-15:]
 
+print('Calculating CSI...')
 band_list = glob.glob('*B02_corr.tif')[0]
 blue = gdal.Open(band_list)
-srs_prj = blue.GetProjection()
-geo_transform = blue.GetGeoTransform()
 blue = blue.GetRasterBand(1).ReadAsArray()
 band_list = glob.glob('*B08_corr.tif')[0]
 nir = gdal.Open(band_list)
@@ -31,10 +30,14 @@ nir = nir.GetRasterBand(1).ReadAsArray()
 band_list = glob.glob('*B11_corr.tif')[0]
 swir = gdal.Open(band_list)
 swir = swir.GetRasterBand(1).ReadAsArray()
+band_list = glob.glob('*B8A.jp2')[0]
+b8a = gdal.Open(band_list)
+srs_prj = b8a.GetProjection()
+geo_transform = b8a.GetGeoTransform()
 
 csi = (nir.astype('float32') + swir.astype('float32')) * 0.5
 t3 = 0.6 #csi threshold coefficient, larger = more cloud shadows detected
-t4 = 0.6 #smaller number removes influence of water
+t4 = 0.7 #smaller number removes influence of water
 x = 0
 
 if csi.min() < 0:
@@ -53,11 +56,12 @@ blue[blue > 1] = 0
 shadows = csi + blue
 shadows[shadows < 2] = 0
 shadows[shadows > 0] = 1
+shadows = cv2.resize(shadows,(5490,5490))
 
 driver = gdal.GetDriverByName("GTiff")
 dst_ds = driver.Create('shadows.tif',
-                       10980,
-                       10980,
+                       5490,
+                       5490,
                        1,
                        gdal.GDT_Int16,
                        options=["COMPRESS=LZW"])
@@ -73,8 +77,8 @@ dst_ds = None
 
 band_list = glob.glob('shadows.tif')[0]
 shadows = gdal.Open(band_list)
-shadow_stats = shadows.GetRasterBand(1).ReadAsArray()
-total_shadow_pixels = shadow_stats.sum()
+shadows = shadows.GetRasterBand(1).ReadAsArray()
+total_shadow_pixels = shadows.sum()
 
 metadata = glob.glob('*TL.xml')[0]
 tree = ET.parse(metadata)
@@ -122,7 +126,9 @@ cloud_lowermost = 20
 cloud_uppermost = 2400
 
 cloud_shadow_curve = []
+shadow_matcher_data_list = []
 
+print('Performing zonal statistics on cloud shadow matching layers...')
 for i,j in enumerate(range(cloud_lowermost,cloud_uppermost,100)):
 
     rise, run = shadow_matrix_values(zenith, azimuth,cloud_height=j)
@@ -133,12 +139,23 @@ for i,j in enumerate(range(cloud_lowermost,cloud_uppermost,100)):
 
     M = np.float32([[1,0,run],[0,1,rise]])
     shadows2 = cv2.warpAffine(img,M,(cols,rows),borderValue = 255)
+    shadows2[shadows2 == 255] = 0
+    
 
     band_list = glob.glob('*B11.jp2')
     swir = gdal.Open(band_list[0])
     srs_prj = swir.GetProjection()
     geo_transform = swir.GetGeoTransform()
-    #cloudmask = gdal.Open(cloudmask)
+    cloudmask = gdal.Open(cloudmask)
+    cloudmask = cloudmask.GetRasterBand(1).ReadAsArray()
+    #cloudmask[cloudmask == 1] = 0
+    cloudmask[cloudmask == 255] = 0
+    
+    #masked_shadow_matcher = np.ma.masked_array(shadows2, mask = cloudmask)
+    #newX = np.ma.MaskedArray(shadows2, mask = cloudmask)
+    newX = cloudmask - shadows2
+    newX[newX ==  1] = 0
+    newX[newX == 255]  = 1
 
     in_raster = 'shadow_match_file_'+str(i)+'_delete.tif'
     driver = gdal.GetDriverByName("GTiff")
@@ -148,174 +165,36 @@ for i,j in enumerate(range(cloud_lowermost,cloud_uppermost,100)):
     dst_ds.SetGeoTransform(list(geo_transform))
     dst_ds.SetProjection(srs.ExportToWkt())
     dst_band = dst_ds.GetRasterBand(1)
-    dst_band.SetNoDataValue(255)
-    dst_band.WriteArray(shadows2)
+    dst_band.SetNoDataValue(0)
+    dst_band.WriteArray(newX)
+    #shadow_matcher_data_list.append(dst_ds)
     dst_ds = None
-    gdal_poly_path = os.path.join(gdal_path,'gdal_polygonize.py')
-    out_shape = 'masked_shadow_match'+str(i)+'_delete.shp'
-    formatType = '"ESRI Shapefile"'
-    gdal_poly_str = 'python {0} -8 {1} -mask {2} -f {3} {4}'
-    gdal_poly_process = gdal_poly_str.format(gdal_poly_path, in_raster, in_raster, formatType, out_shape)
-    os.system(gdal_poly_process)
-
-    def boundingBoxToOffsets(bbox, geot):
-        col1 = int((bbox[0] - geot[0]) / geot[1])
-        col2 = int((bbox[1] - geot[0]) / geot[1]) + 1
-        row1 = int((bbox[3] - geot[3]) / geot[5])
-        row2 = int((bbox[2] - geot[3]) / geot[5]) + 1
-        return [row1, row2, col1, col2]
-
-
-    def geotFromOffsets(row_offset, col_offset, geot):
-        new_geot = [
-        geot[0] + (col_offset * geot[1]),
-        geot[1],
-        0.0,
-        geot[3] + (row_offset * geot[5]),
-        0.0,
-        geot[5]
-        ]
-        return new_geot
-
-
-    def setFeatureStats(fid, min, max, mean, median, sd, sum, count, names=["min", "max", "mean", "median", "sd", "sum", "count", "id"]):
-        featstats = {
-        names[0]: min,
-        names[1]: max,
-        names[2]: mean,
-        names[3]: median,
-        names[4]: sd,
-        names[5]: sum,
-        names[6]: count,
-        names[7]: fid,
-        }
-        return featstats
-
-    mem_driver = ogr.GetDriverByName("Memory")
-    mem_driver_gdal = gdal.GetDriverByName("MEM")
-    shp_name = "temp"
-
-    fn_raster = 'shadows.tif'
-    fn_zones = out_shape
-
-    r_ds = gdal.Open(fn_raster)
-    p_ds = ogr.Open(fn_zones)
-
-    lyr = p_ds.GetLayer()
-    geot = r_ds.GetGeoTransform()
-    nodata = r_ds.GetRasterBand(1).GetNoDataValue()
-
-    zstats = []
-
-    p_feat = lyr.GetNextFeature()
-    niter = 0
-
-    while p_feat:
-        if p_feat.GetGeometryRef() is not None:
-            if os.path.exists(shp_name):
-                mem_driver.DeleteDataSource(shp_name)
-            tp_ds = mem_driver.CreateDataSource(shp_name)
-            tp_lyr = tp_ds.CreateLayer('polygons', None, ogr.wkbPolygon)
-            tp_lyr.CreateFeature(p_feat.Clone())
-            offsets = boundingBoxToOffsets(p_feat.GetGeometryRef().GetEnvelope(),\
-            geot)
-            new_geot = geotFromOffsets(offsets[0], offsets[2], geot)
-
-            tr_ds = mem_driver_gdal.Create(\
-            "", \
-            offsets[3] - offsets[2], \
-            offsets[1] - offsets[0], \
-            1, \
-            gdal.GDT_Byte)
-
-            tr_ds.SetGeoTransform(new_geot)
-            gdal.RasterizeLayer(tr_ds, [1], tp_lyr, burn_values=[1])
-            tr_array = tr_ds.ReadAsArray()
-
-            r_array = r_ds.GetRasterBand(1).ReadAsArray(\
-            offsets[2],\
-            offsets[0],\
-            offsets[3] - offsets[2],\
-            offsets[1] - offsets[0])
-
-            id = p_feat.GetFID()
-
-            if r_array is not None:
-                maskarray = np.ma.MaskedArray(\
-                r_array,\
-                maskarray=np.logical_or(r_array==nodata, np.logical_not(tr_array)))
-
-                if maskarray is not None:
-                    zstats.append(setFeatureStats(\
-                    id,\
-                    maskarray.min(),\
-                    maskarray.max(),\
-                    maskarray.mean(),\
-                    np.ma.median(maskarray),\
-                    maskarray.std(),\
-                    maskarray.sum(),\
-                    maskarray.count()))
-                else:
-                    zstats.append(setFeatureStats(\
-                    id,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata))
-            else:
-                zstats.append(setFeatureStats(\
-                    id,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata,\
-                    nodata))
-
-            tp_ds = None
-            tp_lyr = None
-            tr_ds = None
-
-            p_feat = lyr.GetNextFeature()
-
-    fn_csv = "zstats_"+str(i)+'_delete.csv'
-    col_names = zstats[0].keys()
-    with open(fn_csv, 'w', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, col_names)
-        writer.writeheader()
-        writer.writerows(zstats)
-        
-    df = pd.read_csv(fn_csv)
-    target_shadow_pixels = (df['sum']).sum()
-    total_target_percentage = (target_shadow_pixels / total_shadow_pixels)
-    cloud_shadow_curve.append(total_target_percentage)
-
+    
+    zone_values = shadows[np.where(newX == 1)]
+    zone_sum = zone_values.sum()
+    cloud_shadow_percent = zone_sum.astype('float32') / total_shadow_pixels.astype('float32')
+    cloud_shadow_curve.append(cloud_shadow_percent)
+    
 m = max(cloud_shadow_curve)
 shadow_matcher_max = [i for i, j in enumerate(cloud_shadow_curve) if j == m]
 shadow_matcher_max = (shadow_matcher_max[0])
 
+print('Max cloud height found, validating shadows up to max cloud height...')
 fileList = []
 for i in range(0,shadow_matcher_max+1):
     elem = glob.glob('shadow_match_file_'+str(i)+'_delete.tif')[0]
     fileList.append(elem)
 
 #fileList= glob.glob('*shadow_match_file_*.tif')
-listtoStr = ' '.join([str(elem)] for elem in fileList)
+listtoStr = ' '.join(str(v) for v in fileList)
 
 gdal_merge_path = os.path.join(gdal_path,'gdal_merge.py')
-pixel_size = '10'
+pixel_size = '20'
 outputFile = 'shadowmask_matcher_final.tif'
 
 gdal_merge_str = 'python {0} -ps {1} {2} -o {3} '+listtoStr
 gdal_merge_process = gdal_merge_str.format(gdal_merge_path, pixel_size, pixel_size, outputFile)
 os.system(gdal_merge_process)
-
-for i in fileList:
-    os.remove(i)
 
 warp_shadow_match = gdal.Open('shadowmask_matcher_final.tif')
 srs_prj = warp_shadow_match.GetProjection()
@@ -329,8 +208,8 @@ matched_batch[matched_batch > 0] = 1
 
 driver = gdal.GetDriverByName("GTiff")
 dst_ds = driver.Create('shadows_final.tif',
-                       10980,
-                       10980,
+                       5490,
+                       5490,
                        1,
                        gdal.GDT_Int16,
                        options=["COMPRESS=LZW"])
@@ -344,6 +223,7 @@ dst_band.SetNoDataValue(0)
 dst_band.WriteArray(matched_batch)
 dst_ds = None
 
+print('Sieving and buffering final cloud mask...')
 #Sieve
 gdal_sieve_path = os.path.join(gdal_path,'gdal_sieve.py')
 input_file_path = 'shadows_final.tif'
@@ -363,7 +243,7 @@ gdal_prox_path = os.path.join(gdal_path,'gdal_proximity.py')
 input_file_path = '_sieved.tif'
 output_file_path = '_prox.tif'
 dist_units = 'PIXEL' #The buffer applied will be measured by pixels, as opposed to meters
-max_dist = '6' #Cloud buffer amount.  Note that these are 10m pixels, so a 3 pixel buffer = 30m buffer.
+max_dist = '3' #Cloud buffer amount.  Note that these are 10m pixels, so a 3 pixel buffer = 30m buffer.
 fixed_buffer_val = '1.0'
 
 gdal_prox_str = 'python {0} -of {1} -distunits {2} -maxdist {3} -ot {4} -fixed-buf-val {5} {6} {7}'
@@ -383,6 +263,5 @@ outputFormat = 'HFA'
 gdal_calc_str = 'python {0} --calc {1} -A {2} -B {3} --creation-option {4} --NoDataValue {5} --format {6} --type {7} --outfile {8}'
 gdal_calc_process = gdal_calc_str.format(gdal_calc_path,calc_expr,A,B,creation_option,nodata,outputFormat,typeof,out_mask)
 os.system(gdal_calc_process)
-
 
 print('done!')
